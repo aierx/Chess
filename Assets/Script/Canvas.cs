@@ -15,7 +15,7 @@ public class Canvas : MonoBehaviour
     {
         
     }
-
+    
 
     public void isActive(bool flag)
     {

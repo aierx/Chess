@@ -36,6 +36,7 @@ public class Server : MonoBehaviour
 
     private Button btn_Create;
     private Button btn_Join;
+    private Button btn_Reset;
 
     private InputField in_ipAddress;
     private string ipAddress;
@@ -54,10 +55,26 @@ public class Server : MonoBehaviour
 
         btn_Create = GameObject.Find("btn_Create").GetComponent<Button>();
         btn_Join = GameObject.Find("btn_Join").GetComponent<Button>();
+        btn_Reset = GameObject.Find("reset").GetComponent<Button>();
         btn_Create.onClick.AddListener(createGame);
         btn_Join.onClick.AddListener(joinGame);
+        btn_Reset.onClick.AddListener(reset);
     }
 
+    void reset()
+    {
+        for (int i = 0; i < 15; i++)
+        {
+            for (int j = 0; j < 15; j++)
+            {
+                chessState[i, j] = 0;
+            }
+        }
+        isPlaying = true;
+        chessTurn = turn.black;
+        winner = 0;
+    }
+    
     void joinGame()
     {
         in_ipAddress = GameObject.Find("ipAddress").GetComponent<InputField>();
@@ -211,19 +228,19 @@ public class Server : MonoBehaviour
     void OnGUI()
     {
         GUIStyle bb = new GUIStyle();
-        bb.normal.background = null; //ÕâÊÇÉèÖÃ±³¾°Ìî³äµÄ
-        bb.normal.textColor = new Color(1, 0, 0); //ÉèÖÃ×ÖÌåÑÕÉ«µÄ
-        bb.fontSize = 30; //µ±È»£¬ÕâÊÇ×ÖÌåÑÕÉ«
+        bb.normal.background = null;
+        bb.normal.textColor = new Color(1, 0, 0); 
+        bb.fontSize = 30; 
         if (!isPlaying)
-            GUI.Label(new Rect(0, 40, 100, 100), "µÈ´ıÖĞ",bb);
+            GUI.Label(new Rect(0, 40, 100, 100), "ç­‰å¾…ä¸­",bb);
         else
-            GUI.Label(new Rect(0, 40, 100, 100), "¸Ï½ôÂä×Ó",bb);
+            GUI.Label(new Rect(0, 40, 100, 100), "è¯·è½å­",bb);
 
         if (!isConnected)
-            GUI.Label(new Rect(0, 120, 100, 100), "Î´Á¬½Ó",bb);
+            GUI.Label(new Rect(0, 120, 100, 100), "ç­‰å¾…è¿æ¥",bb);
 
         else
-            GUI.Label(new Rect(0, 120, 100, 100), "ÒÑÁ¬½Ó: " + client.RemoteEndPoint.ToString(),bb);
+            GUI.Label(new Rect(0, 120, 100, 100), "å·²è¿æ¥: " + client.RemoteEndPoint.ToString(),bb);
 
         for (int i = 0; i < 15; i++)
         {

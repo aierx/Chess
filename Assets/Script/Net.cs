@@ -6,18 +6,12 @@ using System.Net.Sockets;
 using System.Text;
 using UnityEngine;
 
-public class Net : MonoBehaviour
+public class Net
 {
-    // Start is called before the first frame update
-    void Start()
+    public static void Main(string[] args)
     {
-        
-    }
-
-    // Update is called once per frame
-    void Update()
-    {
-        
+        var net = new Net();
+        net.OnStartButtonClick();
     }
     public void OnStartButtonClick()
     {
@@ -26,7 +20,7 @@ public class Net : MonoBehaviour
         socket.Listen(1024);
         while (true)
         {
-            Debug.Log("µÈ´ýÁ¬½Ó");
+            Debug.Log("ï¿½È´ï¿½ï¿½ï¿½ï¿½ï¿½");
             Socket client = socket.Accept();
             Console.WriteLine("connected: " + client.RemoteEndPoint.ToString());
             Accept_Complete(client);
