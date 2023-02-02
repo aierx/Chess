@@ -1,5 +1,4 @@
-using System;
-using System.Net;
+using System.Collections.Generic;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
@@ -9,7 +8,8 @@ using UnityEngine.UI;
 public class Server : MonoBehaviour
 {
 
-    Mutex mutex =  new Mutex();
+    // 1 black -1 white
+
     public GameObject LeftTop;
     public GameObject RightTop;
     public GameObject LeftBottom;
@@ -24,151 +24,40 @@ public class Server : MonoBehaviour
     float gridWidth = 1;
     float gridHeight = 1;
     Vector2[,] chessPos;
-    int[,] chessState;
     enum turn { black, white };
-    turn chessTurn;
+
     public Texture2D white;
     public Texture2D black;
     public Texture2D blackWin;
     public Texture2D whiteWin;
+
     int winner = 0;
-    bool isPlaying = false;
 
-    private Button btn_Create;
-    private Button btn_Join;
     private Button btn_Reset;
+    public static bool isStop = true;
 
-    private InputField in_ipAddress;
-    private string ipAddress;
 
-    private Socket client;
-
-    private bool isConnected = false;
-
-    private bool isBlack = false;
 
     void Start()
     {
+        // 跨模块调用方法
+        //GameObject.Find("Canvas").SendMessage("isActive", false)
+
         chessPos = new Vector2[15, 15];
-        chessState = new int[15, 15];
-        chessTurn = turn.black;
 
-        btn_Create = GameObject.Find("btn_Create").GetComponent<Button>();
-        btn_Join = GameObject.Find("btn_Join").GetComponent<Button>();
         btn_Reset = GameObject.Find("reset").GetComponent<Button>();
-        btn_Create.onClick.AddListener(createGame);
-        btn_Join.onClick.AddListener(joinGame);
-        btn_Reset.onClick.AddListener(reset);
-    }
-
-    void reset()
-    {
-        for (int i = 0; i < 15; i++)
+        btn_Reset.onClick.AddListener(() =>
         {
-            for (int j = 0; j < 15; j++)
-            {
-                chessState[i, j] = 0;
-            }
-        }
-        isPlaying = true;
-        chessTurn = turn.black;
-        winner = 0;
-    }
-    
-    void joinGame()
-    {
-        in_ipAddress = GameObject.Find("ipAddress").GetComponent<InputField>();
-        ipAddress = in_ipAddress.text;
-        new Thread(() =>
-        {
-            client = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-            client.Connect(new IPEndPoint(IPAddress.Parse(ipAddress), 8080));
-            SocketAsyncEventArgs recv = new SocketAsyncEventArgs();
-            recv.SetBuffer(new byte[1024], 0, 1024);
-            recv.Completed += new EventHandler<SocketAsyncEventArgs>(recvMessage);
-            isPlaying = true;
-            isConnected = true;
-            isBlack = true;
-            client.ReceiveAsync(recv);
-        }).Start();
-        GameObject.Find("Canvas").SendMessage("isActive", false);
-    }
+            isStop = !isStop;
+        });
 
-    void createGame()
-    {
-        new Thread(() =>
-        {
-            Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-            socket.Bind(new IPEndPoint(IPAddress.Any, 8080));
-            socket.Listen(1024);
-
-            Debug.Log("connecting");
-            client = socket.Accept();
-            isConnected = true;
-            Debug.Log("connected: " + client.RemoteEndPoint.ToString());
-            SocketAsyncEventArgs recv = new SocketAsyncEventArgs();
-
-            byte[] sendBuffers = new byte[1024];
-            recv.SetBuffer(sendBuffers, 0, 1024);
-            recv.Completed += new EventHandler<SocketAsyncEventArgs>(recvMessage);
-            client.ReceiveAsync(recv);
-        }).Start();
-        GameObject.Find("Canvas").SendMessage("isActive", false);
-    }
-
-    void recvMessage(object o, SocketAsyncEventArgs e)
-    {
-        client = o as Socket;
-        if (e.SocketError == SocketError.Success)
-        {
-            int flag = e.BytesTransferred;
-            if (flag == 0)
-            {
-                client.Close();
-                client.Dispose();
-            }
-            byte[] buffer = e.Buffer;
-            string v = Encoding.UTF8.GetString(buffer);
-            string[] stringArr = v.Split("#");
-            Debug.Log("recv!!!");
-            isPlaying = true;
-            for (int i = 0; i < stringArr.Length; i++)
-            {
-                int x = i / 15;
-                int y = i % 15;
-                if (x < 15 && y < 15)
-                {
-                    try
-                    {
-                        chessState[x, y] = int.Parse(stringArr[i]);
-                    }catch (Exception)
-                    {
-                        Debug.Log("aaaa");
-                    }
-                }
-            }
-            Array.Clear(buffer, 0, buffer.Length);
-            client.ReceiveAsync(e);
-        }
-    }
-
-    void sendData()
-    {
-        StringBuilder value = new StringBuilder();
-        for (int i = 0; i < 15; i++)
-        {
-            for (int j = 0; j < 15; j++)
-            {
-                value.Append(chessState[i, j]);
-                value.Append("#");
-            }
-        }
-        isPlaying = false;
-        client.Send(Encoding.UTF8.GetBytes(value.ToString()));
+        Net.instance.init();
     }
 
     void Update()
     {
+        UIContoller.instance.gameObject.SetActive(isStop);
+
         LTPos = cam.WorldToScreenPoint(LeftTop.transform.position);
         RTPos = cam.WorldToScreenPoint(RightTop.transform.position);
         LBPos = cam.WorldToScreenPoint(LeftBottom.transform.position);
@@ -183,7 +72,8 @@ public class Server : MonoBehaviour
                 chessPos[i, j] = new Vector2(LBPos.x + gridWidth * i, LBPos.y + gridHeight * (14 - j));
             }
         }
-        if (isPlaying && Input.GetMouseButtonDown(0))
+
+        if (Net.instance.isPlaying && Input.GetMouseButtonDown(0))
         {
             PointPos = Input.mousePosition;
             float x = PointPos.x;
@@ -194,70 +84,69 @@ public class Server : MonoBehaviour
             int j = Mathf.RoundToInt((y1 - y) / gridHeight);
             if (!(i < 0 || j < 0 || i > 14 || j > 14))
             {
-                if (chessState[i, j] == 0)
-                    chessState[i, j] = isBlack ? 1 : -1;
-                sendData();
+                if (Net.instance.chessState[i, j] == 0)
+                    Net.instance.chessState[i, j] = Net.instance.isBlack ? 1 : -1;
+                Net.instance.sendGameData();
                 int re = result();
                 if (re == 1)
                 {
                     winner = 1;
-                    isPlaying = false;
+                    Net.instance.isPlaying = false;
                 }
                 else if (re == -1)
                 {
                     winner = -1;
-                    isPlaying = false;
+                    Net.instance.isPlaying = false;
                 }
+                else
+                    winner = 0;
             }
         }
-        if (isPlaying && Input.GetKeyDown(KeyCode.Space))
+        if (Net.instance.isPlaying && Input.GetKeyDown(KeyCode.Space))
         {
-            for (int i = 0; i < 15; i++)
-            {
-                for (int j = 0; j < 15; j++)
-                {
-                    chessState[i, j] = 0;
-                }
-            }
-            isPlaying = true;
-            chessTurn = turn.black;
-            winner = 0;
+            Net.instance.reset();
         }
     }
 
     void OnGUI()
     {
+        GUI.depth = -1;
         GUIStyle bb = new GUIStyle();
         bb.normal.background = null;
         bb.normal.textColor = new Color(1, 0, 0); 
         bb.fontSize = 30; 
-        if (!isPlaying)
+        if (!Net.instance.isPlaying)
             GUI.Label(new Rect(0, 40, 100, 100), "等待中",bb);
         else
             GUI.Label(new Rect(0, 40, 100, 100), "请落子",bb);
 
-        if (!isConnected)
+        if (!Net.instance.isConnected)
             GUI.Label(new Rect(0, 120, 100, 100), "等待连接",bb);
 
         else
-            GUI.Label(new Rect(0, 120, 100, 100), "已连接: " + client.RemoteEndPoint.ToString(),bb);
+            GUI.Label(new Rect(0, 120, 100, 100), "已连接: " + Net.instance.client.RemoteEndPoint.ToString(),bb);
 
-        for (int i = 0; i < 15; i++)
+        if (!isStop)
         {
-            for (int j = 0; j < 15; j++)
+            for (int i = 0; i < 15; i++)
             {
-                if (chessState[i, j] == 0) continue;
-                float posX = chessPos[i, j].x - gridWidth / 2;
-                float posY = Screen.height - chessPos[i, j].y - gridHeight / 2;
-                Texture2D texture2D = chessState[i, j] == 1 ? black : white;
-                GUI.DrawTexture(new Rect(posX, posY, gridWidth, gridHeight), texture2D);
+                for (int j = 0; j < 15; j++)
+                {
+                    if (Net.instance.chessState[i, j] == 0) continue;
+                    float posX = chessPos[i, j].x - gridWidth / 2;
+                    float posY = Screen.height - chessPos[i, j].y - gridHeight / 2;
+                    Texture2D texture2D = Net.instance.chessState[i, j] == 1 ? black : white;
+                    GUI.DrawTexture(new Rect(posX, posY, gridWidth, gridHeight), texture2D);
 
+                }
             }
+            if (winner == 1)
+                GUI.DrawTexture(new Rect(Screen.width * 0.25f, Screen.height * 0.25f, Screen.width * 0.5f, Screen.height * 0.25f), blackWin);
+            if (winner == -1)
+                GUI.DrawTexture(new Rect(Screen.width * 0.25f, Screen.height * 0.25f, Screen.width * 0.5f, Screen.height * 0.25f), whiteWin);
         }
-        if (winner == 1)
-            GUI.DrawTexture(new Rect(Screen.width * 0.25f, Screen.height * 0.25f, Screen.width * 0.5f, Screen.height * 0.25f), blackWin);
-        if (winner == -1)
-            GUI.DrawTexture(new Rect(Screen.width * 0.25f, Screen.height * 0.25f, Screen.width * 0.5f, Screen.height * 0.25f), whiteWin);
+
+
 
     }
 
@@ -267,10 +156,10 @@ public class Server : MonoBehaviour
         {
             for (int j = 0; j < 15; j++)
             {
-                if (chessState[i, j] == 0) continue;
-                bool flag = chessState[i, j] == 1;
+                if (Net.instance.chessState[i, j] == 0) continue;
+                bool flag = Net.instance.chessState[i, j] == 1;
                 if (front(i, j, flag) || below(i, j, flag) || leftOlique(i, j, flag) || rightOlique(i, j, flag))
-                    return chessState[i, j];
+                    return Net.instance.chessState[i, j];
             }
         }
         return 0;
@@ -280,43 +169,48 @@ public class Server : MonoBehaviour
     {
         if (j > 10) return false;
         int tmp = isBlack ? 1 : -1;
-        return chessState[i, j] == tmp &&
-                chessState[i, j + 1] == tmp &&
-                chessState[i, j + 2] == tmp &&
-                chessState[i, j + 3] == tmp &&
-                chessState[i, j + 4] == tmp;
+        return Net.instance.chessState[i, j] == tmp &&
+                Net.instance.chessState[i, j + 1] == tmp &&
+                Net.instance.chessState[i, j + 2] == tmp &&
+                Net.instance.chessState[i, j + 3] == tmp &&
+                Net.instance.chessState[i, j + 4] == tmp;
     }
 
     bool below(int i, int j, bool isBlack)
     {
         if (i > 10) return false;
         int tmp = isBlack ? 1 : -1;
-        return chessState[i, j] == tmp &&
-                chessState[i + 1, j] == tmp &&
-                chessState[i + 2, j] == tmp &&
-                chessState[i + 3, j] == tmp &&
-                chessState[i + 4, j] == tmp;
+        return Net.instance.chessState[i, j] == tmp &&
+                Net.instance.chessState[i + 1, j] == tmp &&
+                Net.instance.chessState[i + 2, j] == tmp &&
+                Net.instance.chessState[i + 3, j] == tmp &&
+                Net.instance.chessState[i + 4, j] == tmp;
     }
 
     bool leftOlique(int i, int j, bool isBlack)
     {
         if (i > 10 || j < 4) return false;
         int tmp = isBlack ? 1 : -1;
-        return chessState[i, j] == tmp &&
-                chessState[i + 1, j - 1] == tmp &&
-                chessState[i + 2, j - 2] == tmp &&
-                chessState[i + 3, j - 3] == tmp &&
-                chessState[i + 4, j - 4] == tmp;
+        return Net.instance.chessState[i, j] == tmp &&
+                Net.instance.chessState[i + 1, j - 1] == tmp &&
+                Net.instance.chessState[i + 2, j - 2] == tmp &&
+                Net.instance.chessState[i + 3, j - 3] == tmp &&
+                Net.instance.chessState[i + 4, j - 4] == tmp;
     }
 
     bool rightOlique(int i, int j, bool isBlack)
     {
         if (i > 10 || j > 10) return false;
         int tmp = isBlack ? 1 : -1;
-        return chessState[i, j] == tmp &&
-                chessState[i + 1, j + 1] == tmp &&
-                chessState[i + 2, j + 2] == tmp &&
-                chessState[i + 3, j + 3] == tmp &&
-                chessState[i + 4, j + 4] == tmp;
+        return Net.instance.chessState[i, j] == tmp &&
+                Net.instance.chessState[i + 1, j + 1] == tmp &&
+                Net.instance.chessState[i + 2, j + 2] == tmp &&
+                Net.instance.chessState[i + 3, j + 3] == tmp &&
+                Net.instance.chessState[i + 4, j + 4] == tmp;
+    }
+
+    public void OnDestroy()
+    {
+        Net.instance.closeMe();
     }
 }

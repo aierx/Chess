@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
@@ -8,106 +7,174 @@ using UnityEngine;
 
 public class Net
 {
-    public static void Main(string[] args)
+
+    private Net() { }
+
+    private static Net _instance;
+
+    public static Net instance
     {
-        var net = new Net();
-        net.OnStartButtonClick();
-    }
-    public void OnStartButtonClick()
-    {
-        Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-        socket.Bind(new IPEndPoint(IPAddress.Any, 8080));
-        socket.Listen(1024);
-        while (true)
+        get
         {
-            Debug.Log("�ȴ�����");
-            Socket client = socket.Accept();
-            Console.WriteLine("connected: " + client.RemoteEndPoint.ToString());
-            Accept_Complete(client);
+            if (_instance == null)
+            {
+                _instance = new Net();
+            }
+            return _instance;
         }
     }
 
-    void Accept_Complete(Socket client)
+    public Socket client { get; set; }
+
+    public int[,] chessState = new int[15, 15];
+
+    public List<string> playerList = new List<string>();
+
+    public bool close = false;
+
+    public bool isPlaying = false;
+
+    public string ipAddress;
+    public bool isConnected = false;
+
+    public bool isBlack = false;
+
+
+    public void init()
     {
-        SocketAsyncEventArgs recv = new SocketAsyncEventArgs();
-        SocketAsyncEventArgs send = new SocketAsyncEventArgs();
-
-        ConnectInfo info = new ConnectInfo();
-        info.tmpList = new ArrayList();
-        info.SendArg = send;
-        info.ReceiveArg = recv;
-
-        byte[] sendBuffers = Encoding.UTF8.GetBytes("Helo world");
-        send.SetBuffer(sendBuffers, 0, sendBuffers.Length);
-
-        sendBuffers = new byte[1024];
-        recv.SetBuffer(sendBuffers, 0, 1024);
-        recv.UserToken = info;
-        recv.Completed += new EventHandler<SocketAsyncEventArgs>(Receive_Completed);
-
-        client.SendAsync(send);
-        client.ReceiveAsync(recv);
+        client = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        client.Connect(new IPEndPoint(IPAddress.Parse("124.221.118.223"), 9999));
     }
 
-    void Receive_Completed(object sender, SocketAsyncEventArgs e)
+    public SocketAsyncEventArgs initSendArgs(string data)
     {
-        ConnectInfo info = e.UserToken as ConnectInfo;
+        SocketAsyncEventArgs args = new SocketAsyncEventArgs();
+        byte[] vaule = Encoding.UTF8.GetBytes(data);
+        args.SetBuffer(vaule, 0, vaule.Length);
+        return args;
+    }
 
-        if (info == null) return;
-        Socket client = sender as Socket;
-        if (client == null) return;
 
-        if (e.SocketError == SocketError.Success)
+    public void createGame()
+    {
+        Debug.Log("createGame");
+        client.SendAsync(initSendArgs("createGame"));
+        joinGame();
+        isBlack = true;
+    }
+
+    public void joinGame()
+    {
+        List<string> result = new List<string>();
+        client.SendAsync(initSendArgs("joinGame"));
+
+        SocketAsyncEventArgs recv = new SocketAsyncEventArgs();
+
+        recv.SetBuffer(new byte[1024], 0, 1024);
+        recv.Completed += (c, o) =>
         {
-            int rec = e.BytesTransferred;
-            if (rec == 0)
+            Socket socket = c as Socket;
+            if (o.SocketError == SocketError.Success)
             {
-                Console.WriteLine("closed: " + client.RemoteEndPoint.ToString());
-
-                client.Close();
-                client.Dispose();
-
-                info.ReceiveArg.Dispose();
-                info.SendArg.Dispose();
-
-                return;
-            }
-
-            byte[] datas = e.Buffer;
-            if (client.Available > 0)
-            {
-                for (int i = 0; i < rec; i++)
+                if(o.BytesTransferred == 0)
                 {
-                    info.tmpList.Add(datas[i]);
+                    socket.Close();
+                    socket.Dispose();
+                    close = true;
                 }
-                Array.Clear(datas, 0, datas.Length);
-                datas = new byte[client.Available];
-                e.SetBuffer(datas, 0, datas.Length);
-                client.ReceiveAsync(e);
+
+                string tmp = Encoding.UTF8.GetString(o.Buffer).Trim('\0');
+                if (tmp.StartsWith("#"))
+                {
+                    playerList.Clear();
+                    string[] strList = tmp.Split("#");
+                    foreach(string s in strList)
+                    {
+                        if(!s.Equals(""))
+                            playerList.Add(s);
+                    }
+                }else if (tmp.Equals("joined"))
+                {
+                    Server.isStop = !Server.isStop;
+                    if (isBlack)
+                    {
+                        isPlaying = true;
+                    }
+                    isConnected = true;
+                }
+                else{
+                    string[] stringArr = tmp.Split("#");
+                    isPlaying = true;
+                    ipAddress = socket.RemoteEndPoint.ToString();
+                    for (int i = 0; i < stringArr.Length; i++)
+                    {
+                        int x = i / 15;
+                        int y = i % 15;
+                        if (x < 15 && y < 15)
+                        {
+                            try
+                            {
+                                chessState[x, y] = int.Parse(stringArr[i]);
+                            }
+                            catch (Exception)
+                            {
+                                Debug.Log("aaaa");
+                            }
+                        }
+                    }
+                }
+                o.SetBuffer(new byte[1024],0,1024);
+                socket.ReceiveAsync(o);
             }
             else
             {
-                if (info.tmpList.Count > 0)
-                {
-                    for (int i = 0; i < rec; i++)
-                        info.tmpList.Add(datas[i]);
-                    datas = info.tmpList.ToArray(typeof(byte)) as byte[]; ;
-                    rec = datas.Length;
-                }
+                socket.Close();
+                socket.Dispose();
+                close = true;
+            }
+        };
+        client.ReceiveAsync(recv);
+    }
 
-                string msg = Encoding.UTF8.GetString(datas).Trim('\0');
-                if (msg.Length > 10) msg = msg.Substring(0, 10) + "...";
-                msg = string.Format("rec={0}\r\nmessage={1}", rec, msg);
-                info.SendArg.SetBuffer(Encoding.UTF8.GetBytes(msg), 0, msg.Length);
-                client.SendAsync(info.SendArg);
-                info.tmpList.Clear();
-                if (e.Buffer.Length > 1024)
-                {
-                    datas = new byte[1024];
-                    e.SetBuffer(datas, 0, datas.Length);
-                }
-                client.ReceiveAsync(e);
+    public void selectedGame(string str)
+    {
+        Debug.Log("selectedGame");
+        client.SendAsync(initSendArgs(str));
+    }
+
+
+    public void sendGameData()
+    {
+        isPlaying = false;
+        StringBuilder value = new StringBuilder();
+        for (int i = 0; i < 15; i++)
+        {
+            for (int j = 0; j < 15; j++)
+            {
+                value.Append(chessState[i, j]);
+                value.Append("#");
             }
         }
+        isPlaying = false;
+        client.SendAsync(initSendArgs(value.ToString()));
+    }
+
+
+    public void reset()
+    {
+        for (int i = 0; i < 15; i++)
+        {
+            for (int j = 0; j < 15; j++)
+            {
+                chessState[i, j] = 0;
+            }
+        }
+        isPlaying = true;
+    }
+
+    public void closeMe()
+    {
+        client.Close();
+        client.Dispose();
     }
 }
